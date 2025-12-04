@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble Score Tracker</title>
+    <meta name="description" content="Track your Scrabble game scores with ease">
+    <meta name="theme-color" content="#16a34a">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        * {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        const { useState, useEffect, createElement: e, Fragment } = React;
+        const { Trophy, TrendingUp, Calculator, Plus, RotateCcw, Undo, Play, X, Check, Delete } = lucide;
+
+        const LETTER_VALUES = {
+          A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8,
+          K: 5, L: 1, M: 3, N: 1, O: 1, P: 3, Q: 10, R: 1, S: 1, T: 1,
+          U: 1, V: 4, W: 4, X: 8, Y: 4, Z: 10
+        };
+
+        const COLORS = [
+          '#EF4444', '#F59E0B', '#10B981', '#3B82F6', 
+          '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'
+        ];
+
+        const ACHIEVEMENTS = [
+          { id: 'first-steps', name: 'First Steps', desc: 'Complete your first game', icon: '🎯' },
+          { id: 'high-scorer', name: 'High Scorer', desc: 'Score over 100 in a single turn', icon: '🔥' },
+          { id: 'word-master', name: 'Word Master', desc: 'Play a 7-letter word (Bingo)', icon: '📚' },
+          { id: 'victory-streak', name: 'Victory Streak', desc: 'Win 3 games in a row', icon: '🏆' },
+          { id: 'tile-master', name: 'Tile Master', desc: 'Use all premium squares in one game', icon: '💎' },
+          { id: 'speed-demon', name: 'Speed Demon', desc: 'Complete a game in under 30 minutes', icon: '⚡' }
+        ];
+
+        function ScrabbleTracker() {
+          const [page, setPage] = useState('score');
+          const [players, setPlayers] = useState([]);
+          const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+          const [moveHistory, setMoveHistory] = useState([]);
+          const [customScore, setCustomScore] = useState('');
+          const [gameStartTime, setGameStartTime] = useState(null);
+          
+          const [setupPlayers, setSetupPlayers] = useState([
+            { name: 'Player 1', color: COLORS[0] },
+            { name: 'Player 2', color: COLORS[1] }
+          ]);
+          const [targetScore, setTargetScore] = useState(300);
+          const [gameMode, setGameMode] = useState('Standard');
+          
+          const [currentWord, setCurrentWord] = useState('');
+          
+          const [stats, setStats] = useState({
+            gamesPlayed: 0,
+            totalTime: 0,
+            highestScore: 0,
+            avgScore: 0,
+            gameHistory: [],
+            unlockedAchievements: []
+          });
+
+          useEffect(() => {
+            const saved = localStorage.getItem('scrabbleStats');
+            if (saved) {
+              setStats(JSON.parse(saved));
+            }
+          }, []);
+
+          useEffect(() => {
+            localStorage.setItem('scrabbleStats', JSON.stringify(stats));
+          }, [stats]);
+
+          const addScore = (points) => {
+            if (players.length === 0) return;
+            
+            const newPlayers = [...players];
+            newPlayers[currentPlayerIndex].score += points;
+            
+            const move = {
+              player: players[currentPlayerIndex].name,
+              points,
+              timestamp: new Date().toLocaleTimeString()
+            };
+            
+            setMoveHistory([move, ...moveHistory]);
+            setPlayers(newPlayers);
+            setCurrentPlayerIndex((currentPlayerIndex + 1) % players.length);
+            setCustomScore('');
+            
+            if (points > 100) {
+              unlockAchievement('high-scorer');
+            }
+            
+            checkGameEnd(newPlayers);
+          };
+
+          const undoLastMove = () => {
+            if (moveHistory.length === 0) return;
+            
+            const lastMove = moveHistory[0];
+            const newPlayers = [...players];
+            const playerIndex = newPlayers.findIndex(p => p.name === lastMove.player);
+            
+            if (playerIndex !== -1) {
+              newPlayers[playerIndex].score -= lastMove.points;
+              setPlayers(newPlayers);
+              setMoveHistory(moveHistory.slice(1));
+              setCurrentPlayerIndex(playerIndex);
+            }
+          };
+
+          const resetGame = () => {
+            setPlayers(players.map(p => ({ ...p, score: 0 })));
+            setMoveHistory([]);
+            setCurrentPlayerIndex(0);
+            setGameStartTime(Date.now());
+          };
+
+          const startNewGame = () => {
+            const newPlayers = setupPlayers.map(p => ({ ...p, score: 0 }));
+            setPlayers(newPlayers);
+            setCurrentPlayerIndex(0);
+            setMoveHistory([]);
+            setGameStartTime(Date.now());
+            setPage('score');
+          };
+
+          const checkGameEnd = (currentPlayers) => {
+            const winner = currentPlayers.find(p => p.score >= targetScore);
+            if (winner) {
+              const gameTime = Math.floor((Date.now() - gameStartTime) / 1000);
+              const newGameHistory = {
+                winner: winner.name,
+                score: winner.score,
+                date: new Date().toLocaleDateString(),
+                duration: gameTime,
+                players: currentPlayers.map(p => ({ name: p.name, score: p.score }))
+              };
+              
+              setStats(prev => ({
+                ...prev,
+                gamesPlayed: prev.gamesPlayed + 1,
+                totalTime: prev.totalTime + gameTime,
+                highestScore: Math.max(prev.highestScore, winner.score),
+                avgScore: Math.round((prev.avgScore * prev.gamesPlayed + winner.score) / (prev.gamesPlayed + 1)),
+                gameHistory: [newGameHistory, ...prev.gameHistory]
+              }));
+              
+              unlockAchievement('first-steps');
+              if (gameTime < 1800) unlockAchievement('speed-demon');
+              
+              setTimeout(() => {
+                alert(`🎉 ${winner.name} wins with ${winner.score} points!`);
+              }, 100);
+            }
+          };
+
+          const unlockAchievement = (id) => {
+            setStats(prev => {
+              if (!prev.unlockedAchievements.includes(id)) {
+                return { ...prev, unlockedAchievements: [...prev.unlockedAchievements, id] };
+              }
+              return prev;
+            });
+          };
+
+          const addPlayerSetup = () => {
+            if (setupPlayers.length < 8) {
+              setSetupPlayers([...setupPlayers, { 
+                name: `Player ${setupPlayers.length + 1}`, 
+                color: COLORS[setupPlayers.length % COLORS.length] 
+              }]);
+            }
+          };
+
+          const removePlayerSetup = (index) => {
+            if (setupPlayers.length > 2) {
+              setSetupPlayers(setupPlayers.filter((_, i) => i !== index));
+            }
+          };
+
+          const calculateWordScore = () => {
+            return currentWord.split('').reduce((sum, letter) => sum + (LETTER_VALUES[letter] || 0), 0);
+          };
+
+          const formatTime = (seconds) => {
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          };
+
+          return e('div', { className: "min-h-screen bg-gradient-to-b from-green-50 to-green-100 pb-20" },
+            e('div', { className: "bg-green-600 text-white p-4 shadow-lg" },
+              e('h1', { className: "text-2xl font-bold text-center" }, "Scrabble Tracker")
+            ),
+            e('div', { className: "p-4" },
+              page === 'score' && e('div', { className: "space-y-4" },
+                players.length === 0 ? e('div', { className: "bg-white rounded-lg p-8 text-center shadow-md" },
+                  e(Trophy, { className: "w-16 h-16 mx-auto text-green-600 mb-4" }),
+                  e('h2', { className: "text-xl font-semibold mb-2" }, "No Active Game"),
+                  e('p', { className: "text-gray-600 mb-4" }, "Start a new game to begin tracking scores"),
+                  e('button', {
+                    onClick: () => setPage('new-game'),
+                    className: "bg-green-600 text-white px-6 py-3 rounded-lg font-semibold"
+                  }, "Start New Game")
+                ) : e(Fragment, null,
+                  e('div', { className: "space-y-2" },
+                    players.map((player, index) =>
+                      e('div', {
+                        key: index,
+                        className: `bg-white rounded-lg p-4 shadow-md ${index === currentPlayerIndex ? 'ring-4 ring-green-400' : ''}`
+                      },
+                        e('div', { className: "flex items-center justify-between" },
+                          e('div', { className: "flex items-center gap-3" },
+                            e('div', {
+                              className: "w-10 h-10 rounded-full",
+                              style: { backgroundColor: player.color }
+                            }),
+                            e('div', null,
+                              e('div', { className: "font-semibold text-lg" }, player.name),
+                              index === currentPlayerIndex && e('div', { className: "text-sm text-green-600 font-medium" }, "Your Turn")
+                            )
+                          ),
+                          e('div', { className: "text-3xl font-bold text-gray-800" }, player.score)
+                        )
+                      )
+                    )
+                  ),
+                  e('div', { className: "bg-white rounded-lg p-4 shadow-md" },
+                    e('h3', { className: "font-semibold mb-3" }, "Add Score"),
+                    e('div', { className: "grid grid-cols-3 gap-2 mb-3" },
+                      [10, 20, 50, 75, 100].map(points =>
+                        e('button', {
+                          key: points,
+                          onClick: () => addScore(points),
+                          className: "bg-green-600 text-white py-3 rounded-lg font-semibold text-lg hover:bg-green-700"
+                        }, `+${points}`)
+                      )
+                    ),
+                    e('div', { className: "flex gap-2" },
+                      e('input', {
+                        type: "number",
+                        value: customScore,
+                        onChange: (ev) => setCustomScore(ev.target.value),
+                        placeholder: "Custom",
+                        className: "flex-1 border-2 border-gray-300 rounded-lg px-3 py-2"
+                      }),
+                      e('button', {
+                        onClick: () => customScore && addScore(parseInt(customScore)),
+                        className: "bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700"
+                      }, "Add")
+                    )
+                  ),
+                  e('div', { className: "grid grid-cols-2 gap-2" },
+                    e('button', {
+                      onClick: undoLastMove,
+                      className: "bg-orange-600 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-orange-700"
+                    },
+                      e(Undo, { className: "w-5 h-5" }),
+                      " Undo"
+                    ),
+                    e('button', {
+                      onClick: resetGame,
+                      className: "bg-red-600 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-red-700"
+                    },
+                      e(RotateCcw, { className: "w-5 h-5" }),
+                      " Reset"
+                    )
+                  ),
+                  moveHistory.length > 0 && e('div', { className: "bg-white rounded-lg p-4 shadow-md" },
+                    e('h3', { className: "font-semibold mb-3" }, "Recent Moves"),
+                    e('div', { className: "space-y-2 max-h-40 overflow-y-auto" },
+                      moveHistory.slice(0, 5).map((move, index) =>
+                        e('div', { key: index, className: "flex justify-between text-sm" },
+                          e('span', { className: "text-gray-600" }, move.player),
+                          e('span', { className: "font-semibold text-green-600" }, `+${move.points}`),
+                          e('span', { className: "text-gray-400 text-xs" }, move.timestamp)
+                        )
+                      )
+                    )
+                  )
+                )
+              ),
+              page === 'new-game' && e('div', { className: "space-y-4" },
+                e('div', { className: "bg-white rounded-lg p-4 shadow-md" },
+                  e('h2', { className: "text-xl font-semibold mb-4" }, "New Game Setup"),
+                  e('div', { className: "space-y-3 mb-4" },
+                    e('h3', { className: "font-semibold" }, "Players"),
+                    setupPlayers.map((player, index) =>
+                      e('div', { key: index, className: "flex gap-2 items-center" },
+                        e('input', {
+                          type: "text",
+                          value: player.name,
+                          onChange: (ev) => {
+                            const newPlayers = [...setupPlayers];
+                            newPlayers[index].name = ev.target.value;
+                            setSetupPlayers(newPlayers);
+                          },
+                          className: "flex-1 border-2 border-gray-300 rounded-lg px-3 py-2"
+                        }),
+                        e('select', {
+                          value: player.color,
+                          onChange: (ev) => {
+                            const newPlayers = [...setupPlayers];
+                            newPlayers[index].color = ev.target.value;
+                            setSetupPlayers(newPlayers);
+                          },
+                          className: "border-2 border-gray-300 rounded-lg px-2 py-2"
+                        },
+                          COLORS.map(color =>
+                            e('option', { key: color, value: color, style: { backgroundColor: color } }, "⬤")
+                          )
+                        ),
+                        setupPlayers.length > 2 && e('button', {
+                          onClick: () => removePlayerSetup(index),
+                          className: "text-red-600 p-2"
+                        },
+                          e(X, { className: "w-5 h-5" })
+                        )
+                      )
+                    ),
+                    e('button', {
+                      onClick: addPlayerSetup,
+                      className: "w-full border-2 border-dashed border-gray-300 rounded-lg py-2 text-gray-600 flex items-center justify-center gap-2 hover:border-green-600 hover:text-green-600"
+                    },
+                      e(Plus, { className: "w-5 h-5" }),
+                      " Add Player"
+                    )
+                  ),
+                  e('div', { className: "mb-4" },
+                    e('h3', { className: "font-semibold mb-2" }, "Target Score"),
+                    e('div', { className: "grid grid-cols-3 gap-2" },
+                      [100, 150, 200, 250, 300, 500].map(score =>
+                        e('button', {
+                          key: score,
+                          onClick: () => setTargetScore(score),
+                          className: `py-2 rounded-lg font-semibold ${targetScore === score ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`
+                        }, score)
+                      )
+                    )
+                  ),
+                  e('div', { className: "mb-4" },
+                    e('h3', { className: "font-semibold mb-2" }, "Game Mode"),
+                    e('div', { className: "space-y-2" },
+                      ['Standard', 'Timed Challenge', 'Tournament'].map(mode =>
+                        e('button', {
+                          key: mode,
+                          onClick: () => setGameMode(mode),
+                          className: `w-full py-3 rounded-lg font-semibold ${gameMode === mode ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`
+                        }, mode)
+                      )
+                    )
+                  ),
+                  e('button', {
+                    onClick: startNewGame,
+                    className: "w-full bg-green-600 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-green-700"
+                  },
+                    e(Play, { className: "w-5 h-5" }),
+                    " Start New Game"
+                  )
+                )
+              ),
+              page === 'calculator' && e('div', { className: "space-y-4" },
+                e('div', { className: "bg-white rounded-lg p-4 shadow-md" },
+                  e('h2', { className: "text-xl font-semibold mb-4" }, "Word Score Calculator"),
+                  e('div', { className: "bg-green-50 rounded-lg p-4 mb-4" },
+                    e('div', { className: "text-center text-2xl font-bold mb-2 min-h-8" },
+                      currentWord || 'Enter a word'
+                    ),
+                    e('div', { className: "text-center text-4xl font-bold text-green-600" },
+                      `${calculateWordScore()} points`
+                    )
+                  ),
+                  e('div', { className: "grid grid-cols-7 gap-1 mb-4" },
+                    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter =>
+                      e('button', {
+                        key: letter,
+                        onClick: () => setCurrentWord(currentWord + letter),
+                        className: "bg-amber-100 border-2 border-amber-300 rounded p-2 flex flex-col items-center justify-center aspect-square hover:bg-amber-200"
+                      },
+                        e('span', { className: "font-bold text-sm" }, letter),
+                        e('span', { className: "text-xs text-gray-600" }, LETTER_VALUES[letter])
+                      )
+                    )
+                  ),
+                  e('div', { className: "grid grid-cols-2 gap-2" },
+                    e('button', {
+                      onClick: () => setCurrentWord(currentWord.slice(0, -1)),
+                      className: "bg-orange-600 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-orange-700"
+                    },
+                      e(Delete, { className: "w-5 h-5" }),
+                      " Backspace"
+                    ),
+                    e('button', {
+                      onClick: () => setCurrentWord(''),
+                      className: "bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700"
+                    }, "Clear")
+                  ),
+                  currentWord.length >= 7 && e('div', { className: "mt-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-lg text-center" },
+                    e('span', { className: "text-yellow-800 font-semibold" }, "🎉 Bingo! 7+ letter word!")
+                  )
+                )
+              ),
+              page === 'stats' && e('div', { className: "space-y-4" },
+                e('div', { className: "grid grid-cols-2 gap-2" },
+                  e('div', { className: "bg-white rounded-lg p-4 shadow-md text-center" },
+                    e('div', { className: "text-3xl font-bold text-green-600" }, stats.gamesPlayed),
+                    e('div', { className: "text-sm text-gray-600" }, "Games Played")
+                  ),
+                  e('div', { className: "bg-white rounded-lg p-4 shadow-md text-center" },
+                    e('div', { className: "text-3xl font-bold text-blue-600" }, formatTime(stats.totalTime)),
+                    e('div', { className: "text-sm text-gray-600" }, "Total Time")
+                  ),
+                  e('div', { className: "bg-white rounded-lg p-4 shadow-md text-center" },
+                    e('div', { className: "text-3xl font-bold text-purple-600" }, stats.highestScore),
+                    e('div', { className: "text-sm text-gray-600" }, "Highest Score")
+                  ),
+                  e('div', { className: "bg-white rounded-lg p-4 shadow-md text-center" },
+                    e('div', { className: "text-3xl font-bold text-orange-600" }, stats.avgScore),
+                    e('div', { className: "text-sm text-gray-600" }, "Avg Score")
+                  )
+                ),
+                e('div', { className: "bg-white rounded-lg p-4 shadow-md" },
+                  e('h2', { className: "text-xl font-semibold mb-3" }, "Achievements"),
+                  e('div', { className: "space-y-2" },
+                    ACHIEVEMENTS.map(achievement =>
+                      e('div', {
+                        key: achievement.id,
+                        className: `p-3 rounded-lg ${stats.unlockedAchievements.includes(achievement.id) ? 'bg-green-50 border-2 border-green-300' : 'bg-gray-50 border-2 border-gray-200 opacity-50'}`
+                      },
+                        e('div', { className: "flex items-center gap-3" },
+                          e('span', { className: "text-2xl" }, achievement.icon),
+                          e('div', { className: "flex-1" },
+                            e('div', { className: "font-semibold" }, achievement.name),
+                            e('div', { className: "text-sm text-gray-600" }, achievement.desc)
+                          ),
+                          stats.unlockedAchievements.includes(achievement.id) && e(Check, { className: "w-6 h-6 text-green-600" })
+                        )
+                      )
+                    )
+                  )
+                ),
+                e('div', { className: "bg-white rounded-lg p-4 shadow-md" },
+                  e('h2', { className: "text-xl font-semibold mb-3" }, "Game History"),
+                  stats.gameHistory.length === 0 ? e('p', { className: "text-gray-500 text-center py-4" }, "No games played yet") :
+                    e('div', { className: "space-y-2" },
+                      stats.gameHistory.slice(0, 10).map((game, index) =>
+                        e('div', { key: index, className: "border-2 border-gray-200 rounded-lg p-3" },
+                          e('div', { className: "flex justify-between items-center mb-2" },
+                            e('span', { className: "font-semibold" }, `🏆 ${game.winner}`),
+                            e('span', { className: "text-sm text-gray-600" }, game.date)
+                          ),
+                          e('div', { className: "flex justify-between text-sm text-gray-600" },
+                            e('span', null, `Score: ${game.score}`),
+                            e('span', null, `Time: ${formatTime(game.duration)}`)
+                          )
+                        )
+                      )
+                    )
+                )
+              )
+            ),
+            e('div', { className: "fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-lg" },
+              e('div', { className: "grid grid-cols-4 gap-1 p-2" },
+                e('button', {
+                  onClick: () => setPage('score'),
+                  className: `flex flex-col items-center py-2 rounded-lg ${page === 'score' ? 'text-green-600 bg-green-50' : 'text-gray-600'}`
+                },
+                  e(Trophy, { className: "w-6 h-6" }),
+                  e('span', { className: "text-xs mt-1" }, "Score")
+                ),
+                e('button', {
+                  onClick: () => setPage('new-game'),
+                  className: `flex flex-col items-center py-2 rounded-lg ${page === 'new-game' ? 'text-green-600 bg-green-50' : 'text-gray-600'}`
+                },
+                  e(Plus, { className: "w-6 h-6" }),
+                  e('span', { className: "text-xs mt-1" }, "New Game")
+                ),
+                e('button', {
+                  onClick: () => setPage('calculator'),
+                  className: `flex flex-col items-center py-2 rounded-lg ${page === 'calculator' ? 'text-green-600 bg-green-50' : 'text-gray-600'}`
+                },
+                  e(Calculator, { className: "w-6 h-6" }),
+                  e('span', { className: "text-xs mt-1" }, "Calculator")
+                ),
+                e('button', {
+                  onClick: () => setPage('stats'),
+                  className: `flex flex-col items-center py-2 rounded-lg ${page === 'stats' ? 'text-green-600 bg-green-50' : 'text-gray-600'}`
+                },
+                  e(TrendingUp, { className: "w-6 h-6" }),
+                  e('span', { className: "text-xs mt-1" }, "Stats")
+                )
+              )
+            )
+          );
+        }
+
+        ReactDOM.render(e(ScrabbleTracker), document.getElementById('root'));
+    </script>
+</body>
+</html>
