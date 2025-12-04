@@ -1,3 +1,11 @@
+const { useState, useEffect } = React;
+const { Trophy, TrendingUp, Calculator, History, Plus, Minus, RotateCcw, Undo, Play, X, Check, Delete } = lucide;
+
+// [Copy the entire React component code from the artifact above]
+// The component starts with: const LETTER_VALUES = { ... }
+// And ends with: ReactDOM.render(<ScrabbleTracker />, document.getElementById('root'));
+
+
 import React, { useState, useEffect } from 'react';
 import { Trophy, TrendingUp, Calculator, History, Plus, Minus, RotateCcw, Undo, Play, X, Check, Delete } from 'lucide-react';
 
@@ -576,4 +584,5 @@ export default function ScrabbleTracker() {
       </div>
     </div>
   );
+
 }
